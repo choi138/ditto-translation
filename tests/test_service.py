@@ -10,18 +10,18 @@ import httpx
 import pytest
 from pydantic import ValidationError
 
-from ditto_translation.config import Settings
-from ditto_translation.ditto import (
+from app.config import Settings
+from app.ditto import (
     DittoApiClient,
     DittoApiError,
     DittoUpdateClient,
     PermanentDittoApiError,
 )
-from ditto_translation.models import EventInProgressError, EventStart, ProcessOutcome, ProcessResult
-from ditto_translation.security import signed_headers
-from ditto_translation.service import DittoTranslationService
-from ditto_translation.store import TranslationStore
-from ditto_translation.translator import Translator
+from app.models import EventInProgressError, EventStart, ProcessOutcome, ProcessResult
+from app.security import signed_headers
+from app.service import DittoTranslationService
+from app.store import TranslationStore
+from app.translator import Translator
 
 
 @dataclass

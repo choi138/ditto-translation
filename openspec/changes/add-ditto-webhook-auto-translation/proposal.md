@@ -23,7 +23,7 @@ None.
 
 ## Impact
 
-- Adds a Python application package under `ditto_translation/`.
+- Adds a Python application package under `app/`.
 - Adds FastAPI runtime dependencies, OpenAI-compatible client usage, Ditto API client usage, and SQLite state storage.
 - Adds configuration for Ditto credentials, webhook signing, locale-to-variant mapping, codex-lb base URL/API key/model, retry settings, and runtime database path.
 - Adds tests for locale routing, source-locale protection, deduplication, retry, signature verification, and loop prevention.

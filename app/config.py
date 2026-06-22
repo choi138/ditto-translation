@@ -29,7 +29,7 @@ class Settings(BaseSettings):
     codex_lb_api_key: str = "codex-lb-local-dev-key"
     translation_model: str = "gpt-5.3-codex"
 
-    sqlite_path: Path = Path("var/ditto_translation.sqlite3")
+    sqlite_path: Path = Path("var/app.sqlite3")
     webhook_timestamp_tolerance_seconds: int = 360
     in_progress_event_timeout_seconds: int = 600
     outbound_update_ttl_seconds: int = 1800

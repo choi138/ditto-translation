@@ -5,9 +5,9 @@ import logging
 from collections.abc import Mapping
 from typing import Any
 
-from ditto_translation.config import Settings
-from ditto_translation.ditto import DittoUpdateClient, PermanentDittoApiError
-from ditto_translation.models import (
+from app.config import Settings
+from app.ditto import DittoUpdateClient, PermanentDittoApiError
+from app.models import (
     EventInProgressError,
     EventStart,
     ProcessOutcome,
@@ -16,14 +16,14 @@ from ditto_translation.models import (
     WebhookEvent,
     WebhookPayloadError,
 )
-from ditto_translation.retry import retry_call
-from ditto_translation.security import (
+from app.retry import retry_call
+from app.security import (
     SignatureError,
     event_key_from_request,
     verify_ditto_signature,
 )
-from ditto_translation.store import TranslationStore
-from ditto_translation.translator import Translator
+from app.store import TranslationStore
+from app.translator import Translator
 
 logger = logging.getLogger(__name__)
 

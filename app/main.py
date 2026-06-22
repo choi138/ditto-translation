@@ -6,13 +6,13 @@ from functools import lru_cache
 from anyio.to_thread import run_sync
 from fastapi import FastAPI, HTTPException, Request, status
 
-from ditto_translation.config import Settings, get_settings
-from ditto_translation.ditto import DittoApiClient
-from ditto_translation.models import EventInProgressError
-from ditto_translation.security import SignatureError
-from ditto_translation.service import DittoTranslationService
-from ditto_translation.store import TranslationStore
-from ditto_translation.translator import CodexLbTranslator
+from app.config import Settings, get_settings
+from app.ditto import DittoApiClient
+from app.models import EventInProgressError
+from app.security import SignatureError
+from app.service import DittoTranslationService
+from app.store import TranslationStore
+from app.translator import CodexLbTranslator
 
 
 def create_app() -> FastAPI:

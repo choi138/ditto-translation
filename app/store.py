@@ -6,7 +6,7 @@ import threading
 import time
 from pathlib import Path
 
-from ditto_translation.models import EventStart
+from app.models import EventStart
 
 
 class TranslationStore:
