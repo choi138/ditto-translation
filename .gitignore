@@ -1,0 +1,11 @@
+.env
+.env.*
+!.env.example
+.venv/
+.pytest_cache/
+.ruff_cache/
+.agents/hooks/state/
+__pycache__/
+*.py[cod]
+var/*.sqlite3
+var/*.sqlite3-*

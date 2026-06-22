@@ -1,0 +1,35 @@
+{
+  "version": "1.0",
+  "skills": {
+    "codex-review-loop": {
+      "type": "domain",
+      "enforcement": "suggest",
+      "priority": "high",
+      "description": "Automated adversarial PR code review loop powered by Codex CLI",
+      "promptTriggers": {
+        "keywords": [
+          "codex review",
+          "codex-review-loop",
+          "adversarial review",
+          "code review loop",
+          "review PR",
+          "pr review",
+          "코드 리뷰",
+          "리뷰 루프",
+          "적대적 리뷰",
+          "deep review"
+        ],
+        "intentPatterns": [
+          "(review|check|audit).*(PR|pull request|branch|changes|code)",
+          "(codex|adversarial).*(review|check|audit)",
+          "(리뷰|검토|감사).*(PR|브랜치|변경|코드)"
+        ]
+      },
+      "fileTriggers": {
+        "pathPatterns": [],
+        "pathExclusions": [],
+        "contentPatterns": []
+      }
+    }
+  }
+}
