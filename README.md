@@ -31,7 +31,7 @@ Copy `.env.example` to `.env` and set:
 
 ```bash
 uv sync
-uv run uvicorn ditto_translation.main:app --host 0.0.0.0 --port 8080
+uv run uvicorn app.main:app --host 0.0.0.0 --port 8080
 ```
 
 Ditto should call:
