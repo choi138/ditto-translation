@@ -7,6 +7,10 @@ from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
+def _default_locale_variant_ids() -> dict[str, str | None]:
+    return {"ko": "ko", "en": "en", "ja": "ja"}
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -19,7 +23,7 @@ class Settings(BaseSettings):
     allow_unsigned_webhooks: bool = False
     ditto_api_base_url: str = "https://api.dittowords.com/v2"
     ditto_locale_variant_ids: dict[str, str | None] = Field(
-        default_factory=lambda: {"ko": None, "en": "en", "ja": "ja"}
+        default_factory=_default_locale_variant_ids
     )
     ditto_force_variant_creation: bool = False
 
@@ -52,20 +56,27 @@ class Settings(BaseSettings):
     def validate_locale_mapping(self) -> Settings:
         if self.base_locale not in self.ditto_locale_variant_ids:
             raise ValueError("BASE_LOCALE must exist in DITTO_LOCALE_VARIANT_IDS")
-        if self.ditto_locale_variant_ids[self.base_locale] is not None:
-            raise ValueError("BASE_LOCALE must map to null in DITTO_LOCALE_VARIANT_IDS")
+        blank_variant_locales = [
+            locale
+            for locale, variant_id in self.ditto_locale_variant_ids.items()
+            if variant_id is not None and variant_id.strip() == ""
+        ]
+        if blank_variant_locales:
+            locales = ", ".join(sorted(blank_variant_locales))
+            raise ValueError(f"Variant IDs must not be blank: {locales}")
+
         invalid_variant_locales = [
             locale
             for locale, variant_id in self.ditto_locale_variant_ids.items()
-            if locale != self.base_locale and (variant_id is None or variant_id.strip() == "")
+            if locale != self.base_locale and variant_id is None
         ]
         if invalid_variant_locales:
             locales = ", ".join(sorted(invalid_variant_locales))
             raise ValueError(f"Non-base locales must map to variant IDs: {locales}")
         variant_ids = [
             variant_id
-            for locale, variant_id in self.ditto_locale_variant_ids.items()
-            if locale != self.base_locale and variant_id is not None
+            for variant_id in self.ditto_locale_variant_ids.values()
+            if variant_id is not None
         ]
         duplicate_variant_ids = {
             variant_id for variant_id in variant_ids if variant_ids.count(variant_id) > 1

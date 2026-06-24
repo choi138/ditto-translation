@@ -22,7 +22,7 @@ Copy `.env.example` to `.env` and set:
 - `DITTO_WEBHOOK_SIGNING_KEY`: webhook signing key from Ditto.
 - `ALLOW_UNSIGNED_WEBHOOKS`: keep `false` in production; set `true` only for local unsigned tests.
 - `DITTO_LOCALE_VARIANT_IDS`: JSON mapping from locale code to Ditto variant developer ID.
-  The base locale must map to `null`.
+  Use `null` only for locales that should update base text instead of a variant.
 - `CODEX_LB_BASE_URL`: default is `http://127.0.0.1:2455/v1`.
 - `CODEX_LB_API_KEY`: API key generated from the `~/Desktop/codex-lb` dashboard.
 - `TRANSLATION_MODEL`: default is `gpt-5.3-codex`.
