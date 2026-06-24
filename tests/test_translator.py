@@ -97,6 +97,36 @@ def test_gemini_translator_requests_structured_json_output() -> None:
     assert config.http_options.timeout == 2500
 
 
+def test_gemini_translator_strips_model_name_before_request() -> None:
+    models = FakeModels(response=FakeGenerateContentResponse(json.dumps({"en": "Hello"})))
+    translator = GeminiTranslator(
+        api_key="",
+        model="  gemini-test  ",
+        client=fake_client(models),
+    )
+
+    translator.translate(source_locale="ko", target_locales=("en",), text="안녕하세요")
+
+    assert models.calls[0]["model"] == "gemini-test"
+
+
+def test_gemini_translator_uses_minimum_one_millisecond_timeout() -> None:
+    models = FakeModels(response=FakeGenerateContentResponse(json.dumps({"en": "Hello"})))
+    translator = GeminiTranslator(
+        api_key="",
+        model="gemini-test",
+        timeout_seconds=0.0001,
+        client=fake_client(models),
+    )
+
+    translator.translate(source_locale="ko", target_locales=("en",), text="안녕하세요")
+
+    config = models.calls[0]["config"]
+    assert isinstance(config, types.GenerateContentConfig)
+    assert config.http_options is not None
+    assert config.http_options.timeout == 1
+
+
 def test_gemini_translator_skips_provider_when_no_target_locales() -> None:
     models = FakeModels()
     translator = GeminiTranslator(

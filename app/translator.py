@@ -57,7 +57,7 @@ class GeminiTranslator:
         if timeout_seconds <= 0:
             raise ValueError("TRANSLATION_TIMEOUT_SECONDS must be greater than 0")
 
-        self._model = model
+        self._model = model.strip()
         self._timeout_seconds = timeout_seconds
         self._client = client or cast(GeminiClient, genai.Client(api_key=api_key))
 
@@ -99,7 +99,7 @@ class GeminiTranslator:
                     response_schema=response_schema,
                     thinking_config=types.ThinkingConfig(thinking_budget=0),
                     http_options=types.HttpOptions(
-                        timeout=int(self._timeout_seconds * 1000),
+                        timeout=max(1, int(self._timeout_seconds * 1000)),
                     ),
                 ),
             )
