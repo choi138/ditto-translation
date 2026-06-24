@@ -267,6 +267,7 @@ class DittoTranslationService:
     def _extract_change(self, payload: dict[str, Any]) -> SourceChange | None:
         event = payload.get("event")
         if event not in {
+            WebhookEvent.TEXT_ITEM_CREATED.value,
             WebhookEvent.BASE_TEXT_CHANGED.value,
             WebhookEvent.VARIANT_TEXT_CHANGED.value,
         }:
@@ -275,6 +276,15 @@ class DittoTranslationService:
         data = payload.get("data")
         if not isinstance(data, dict):
             raise WebhookPayloadError("Ditto webhook data must be an object")
+
+        if event == WebhookEvent.TEXT_ITEM_CREATED:
+            return SourceChange(
+                project_id=_required_string(data, "projectId"),
+                developer_id=_required_string(data, "textItemId"),
+                source_locale=self._settings.base_locale,
+                source_text=_required_string(data, "text"),
+                source_variant_id=None,
+            )
 
         if event == WebhookEvent.BASE_TEXT_CHANGED:
             return SourceChange(

@@ -5,6 +5,7 @@ from enum import StrEnum
 
 
 class WebhookEvent(StrEnum):
+    TEXT_ITEM_CREATED = "TextItem_Created"
     BASE_TEXT_CHANGED = "TextItem_Base_Text_Changed"
     VARIANT_TEXT_CHANGED = "TextItem_Variant_Text_Changed"
 
