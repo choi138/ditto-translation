@@ -30,11 +30,11 @@ The current repository has no application implementation yet, so this change int
 - Use synchronous clients behind `anyio.to_thread.run_sync`. Ditto and OpenAI-compatible SDK calls are straightforward sync operations; running the service logic in a worker thread avoids blocking the event loop while keeping the implementation simple.
 - Use SQLite for durable idempotency and outbound update memory. In-memory state would fail across restarts, while a separate queue/database would be premature for this small service.
 - Track webhook events with statuses. `succeeded` and `skipped` events are treated as completed duplicates; active `in_progress` redeliveries return a retryable response; `failed` and stale `in_progress` events may be retried so Ditto redelivery is useful.
-- Track self-generated updates by `(project_id, developer_id, locale, translated_text_hash)` with a TTL. Ditto can echo the service's own target-locale write as another webhook; matching the exact locale and text lets the service skip that echo without ignoring real designer edits.
+- Track self-generated updates by `(project_id, developer_id, locale, variant_id, translated_text_hash)` with a TTL. Ditto can echo the service's own target-locale write as another webhook; matching the exact variant, locale, and text lets the service skip that echo without ignoring real designer edits or failed base-event retries.
 - Verify Ditto signatures by default. Production should reject unsigned webhook requests; local development can explicitly opt into unsigned events if needed.
 - Treat malformed webhook payloads and non-rate-limited Ditto 4xx responses as non-retryable skipped outcomes so permanent failures do not create webhook/API retry loops.
 - Use codex-lb through the OpenAI Python SDK with `CODEX_LB_BASE_URL`, `CODEX_LB_API_KEY`, and `TRANSLATION_MODEL`. This matches the local Docker server and keeps translation provider wiring replaceable.
-- Send Ditto update requests through `PATCH /textItems`, including the webhook `projectId`, omitting `variantId` for the base locale, and including the mapped variant developer ID for variant locales.
+- Send Ditto update requests through `PATCH /textItems`, including the webhook `projectId` and including a mapped variant developer ID whenever the target locale is configured with one.
 
 ## Risks / Trade-offs
 

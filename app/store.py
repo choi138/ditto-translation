@@ -100,6 +100,7 @@ class TranslationStore:
         project_id: str,
         developer_id: str,
         locale: str,
+        variant_id: str | None,
         text: str,
         ttl_seconds: int,
     ) -> None:
@@ -111,12 +112,15 @@ class TranslationStore:
             self._connection.execute(
                 """
                 INSERT INTO outbound_updates
-                    (project_id, developer_id, locale, text_hash, expires_at, created_at)
-                VALUES (?, ?, ?, ?, ?, ?)
-                ON CONFLICT(project_id, developer_id, locale, text_hash)
+                    (
+                        project_id, developer_id, locale, variant_id,
+                        text_hash, expires_at, created_at
+                    )
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(project_id, developer_id, locale, variant_id, text_hash)
                 DO UPDATE SET expires_at = excluded.expires_at
                 """,
-                (project_id, developer_id, locale, text_hash, expires_at, now),
+                (project_id, developer_id, locale, variant_id or "", text_hash, expires_at, now),
             )
             self._connection.commit()
 
@@ -126,24 +130,34 @@ class TranslationStore:
         project_id: str,
         developer_id: str,
         locale: str,
+        variant_id: str | None,
         text: str,
     ) -> bool:
         now = time.time()
         text_hash = _text_hash(text)
+        variant_keys = _variant_lookup_keys(variant_id)
         with self._lock:
             self._delete_expired_outbound_updates(now)
             row = self._connection.execute(
-                """
+                f"""
                 SELECT id
                 FROM outbound_updates
                 WHERE project_id = ?
                   AND developer_id = ?
                   AND locale = ?
+                  AND variant_id IN ({_placeholders(variant_keys)})
                   AND text_hash = ?
                   AND expires_at > ?
                 LIMIT 1
                 """,
-                (project_id, developer_id, locale, text_hash, now),
+                (
+                    project_id,
+                    developer_id,
+                    locale,
+                    *variant_keys,
+                    text_hash,
+                    now,
+                ),
             ).fetchone()
             if row is None:
                 self._connection.commit()
@@ -158,19 +172,22 @@ class TranslationStore:
         project_id: str,
         developer_id: str,
         locale: str,
+        variant_id: str | None,
         text: str,
     ) -> None:
         text_hash = _text_hash(text)
+        variant_keys = _variant_lookup_keys(variant_id)
         with self._lock:
             self._connection.execute(
-                """
+                f"""
                 DELETE FROM outbound_updates
                 WHERE project_id = ?
                   AND developer_id = ?
                   AND locale = ?
+                  AND variant_id IN ({_placeholders(variant_keys)})
                   AND text_hash = ?
                 """,
-                (project_id, developer_id, locale, text_hash),
+                (project_id, developer_id, locale, *variant_keys, text_hash),
             )
             self._connection.commit()
 
@@ -188,31 +205,99 @@ class TranslationStore:
                 )
                 """
             )
-            self._connection.execute(
-                """
-                CREATE TABLE IF NOT EXISTS outbound_updates (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    project_id TEXT NOT NULL,
-                    developer_id TEXT NOT NULL,
-                    locale TEXT NOT NULL,
-                    text_hash TEXT NOT NULL,
-                    expires_at REAL NOT NULL,
-                    created_at REAL NOT NULL,
-                    UNIQUE(project_id, developer_id, locale, text_hash)
-                )
-                """
-            )
-            self._connection.execute(
-                """
-                CREATE INDEX IF NOT EXISTS idx_outbound_updates_lookup
-                ON outbound_updates(project_id, developer_id, locale, text_hash, expires_at)
-                """
-            )
+            columns = self._outbound_update_columns()
+            if not columns:
+                self._create_outbound_updates_table()
+            elif "variant_id" not in columns or self._has_legacy_outbound_unique_index():
+                self._rebuild_outbound_updates_table(has_variant_id="variant_id" in columns)
+
+            self._create_outbound_update_indexes()
             self._connection.commit()
 
     def _delete_expired_outbound_updates(self, now: float) -> None:
         self._connection.execute("DELETE FROM outbound_updates WHERE expires_at <= ?", (now,))
 
+    def _outbound_update_columns(self) -> set[str]:
+        return {row[1] for row in self._connection.execute("PRAGMA table_info(outbound_updates)")}
+
+    def _has_legacy_outbound_unique_index(self) -> bool:
+        legacy_columns = ("project_id", "developer_id", "locale", "text_hash")
+        for row in self._connection.execute("PRAGMA index_list(outbound_updates)"):
+            index_name = row[1]
+            is_unique = bool(row[2])
+            if not is_unique:
+                continue
+            escaped_index_name = str(index_name).replace('"', '""')
+            columns = tuple(
+                info[2]
+                for info in self._connection.execute(f'PRAGMA index_info("{escaped_index_name}")')
+            )
+            if columns == legacy_columns:
+                return True
+        return False
+
+    def _create_outbound_updates_table(self) -> None:
+        self._connection.execute(
+            """
+            CREATE TABLE outbound_updates (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                project_id TEXT NOT NULL,
+                developer_id TEXT NOT NULL,
+                locale TEXT NOT NULL,
+                variant_id TEXT NOT NULL DEFAULT '',
+                text_hash TEXT NOT NULL,
+                expires_at REAL NOT NULL,
+                created_at REAL NOT NULL,
+                UNIQUE(project_id, developer_id, locale, variant_id, text_hash)
+            )
+            """
+        )
+
+    def _rebuild_outbound_updates_table(self, *, has_variant_id: bool) -> None:
+        self._connection.execute("ALTER TABLE outbound_updates RENAME TO outbound_updates_legacy")
+        self._create_outbound_updates_table()
+        # Legacy rows predate variant-aware markers; keep them under the blank key
+        # and let lookups treat that key as a temporary fallback until TTL expiry.
+        variant_id_select = "variant_id" if has_variant_id else "''"
+        self._connection.execute(
+            f"""
+            INSERT INTO outbound_updates
+                (
+                    id, project_id, developer_id, locale, variant_id,
+                    text_hash, expires_at, created_at
+                )
+            SELECT id, project_id, developer_id, locale, {variant_id_select},
+                   text_hash, expires_at, created_at
+            FROM outbound_updates_legacy
+            """
+        )
+        self._connection.execute("DROP TABLE outbound_updates_legacy")
+
+    def _create_outbound_update_indexes(self) -> None:
+        self._connection.execute(
+            """
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_outbound_updates_unique
+            ON outbound_updates(project_id, developer_id, locale, variant_id, text_hash)
+            """
+        )
+        self._connection.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_outbound_updates_lookup
+            ON outbound_updates(project_id, developer_id, locale, variant_id, text_hash, expires_at)
+            """
+        )
+
 
 def _text_hash(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def _variant_lookup_keys(variant_id: str | None) -> tuple[str, ...]:
+    variant_key = variant_id or ""
+    if variant_id is None or variant_key == "":
+        return (variant_key,)
+    return (variant_key, "")
+
+
+def _placeholders(values: tuple[str, ...]) -> str:
+    return ",".join("?" for _ in values)
