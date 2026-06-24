@@ -23,7 +23,8 @@ Copy `.env.example` to `.env` and set:
 - `DITTO_LOCALE_VARIANT_IDS`: JSON mapping from locale code to Ditto variant developer ID.
   Use `null` only for locales that should update base text instead of a variant.
 - `GEMINI_API_KEY`: Gemini API key used by the translation provider.
-- `TRANSLATION_MODEL`: default is `gemini-3.5-flash`.
+- `TRANSLATION_MODEL`: default is `gemini-3.1-flash-lite`.
+- `TRANSLATION_TIMEOUT_SECONDS`: Gemini request timeout in seconds; default is `10.0`.
 
 For Docker or Compose deployments, pass `GEMINI_API_KEY` as a runtime
 environment variable or deployment secret. Do not bake API keys into the image.
@@ -45,6 +46,61 @@ Health check:
 
 ```text
 GET /health
+```
+
+## Docker
+
+Build the production image locally:
+
+```bash
+docker build -t ditto-translation:local .
+```
+
+Run with Docker Compose:
+
+```bash
+cp .env.example .env
+DITTO_TRANSLATION_IMAGE=ditto-translation:local docker compose up -d --build
+```
+
+Compose reads runtime configuration from `.env`, maps host port `8080` to the
+container, and stores SQLite state in the `ditto-translation-data` volume. Keep
+real API keys and webhook signing keys in local or deployment secrets only. For
+Docker env files, keep `DITTO_LOCALE_VARIANT_IDS` as raw JSON without surrounding
+quotes.
+
+Run the image directly when Compose is not needed:
+
+```bash
+docker run -d \
+  --name ditto-translation \
+  --env-file .env \
+  -p 8080:8080 \
+  -v ditto-translation-data:/app/var \
+  ditto-translation:local
+```
+
+Check and stop the container:
+
+```bash
+curl http://localhost:8080/health
+docker stop ditto-translation
+```
+
+Release images are published to GitHub Container Registry as:
+
+```text
+ghcr.io/choi138/ditto-translation:<version>
+ghcr.io/choi138/ditto-translation:<major>.<minor>
+ghcr.io/choi138/ditto-translation:latest
+ghcr.io/choi138/ditto-translation:sha-<short-sha>
+```
+
+For a server deployment, pin the image tag before pulling and starting:
+
+```bash
+DITTO_TRANSLATION_IMAGE=ghcr.io/choi138/ditto-translation:0.1.0 docker compose pull
+DITTO_TRANSLATION_IMAGE=ghcr.io/choi138/ditto-translation:0.1.0 docker compose up -d --no-build
 ```
 
 ## Verify

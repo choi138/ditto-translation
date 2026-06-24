@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 from collections.abc import Mapping
 from typing import Any
 
@@ -43,6 +44,7 @@ class DittoTranslationService:
         self._ditto_client = ditto_client
 
     def process_webhook(self, raw_body: bytes, headers: Mapping[str, str]) -> ProcessResult:
+        process_started_at = time.perf_counter()
         if self._settings.ditto_webhook_signing_key:
             verify_ditto_signature(
                 raw_body=raw_body,
@@ -123,8 +125,14 @@ class DittoTranslationService:
                 for locale in self._settings.supported_locales
                 if locale != change.source_locale
             )
+
+            translation_started_at = time.perf_counter()
             translations = self._translate_with_retry(change, target_locales)
+            translation_duration_ms = _duration_ms(translation_started_at)
+
+            ditto_update_started_at = time.perf_counter()
             updated_locales = self._update_ditto_targets(change, translations, target_locales)
+            ditto_update_duration_ms = _duration_ms(ditto_update_started_at)
 
             self._store.finish_event(event_key, status="succeeded")
             logger.info(
@@ -135,6 +143,9 @@ class DittoTranslationService:
                     "developer_id": change.developer_id,
                     "source_locale": change.source_locale,
                     "updated_locales": ",".join(updated_locales),
+                    "translation_duration_ms": translation_duration_ms,
+                    "ditto_update_duration_ms": ditto_update_duration_ms,
+                    "duration_ms": _duration_ms(process_started_at),
                 },
             )
             return ProcessResult(
@@ -305,3 +316,7 @@ def _required_string(data: Mapping[str, Any], key: str) -> str:
     if not isinstance(value, str):
         raise WebhookPayloadError(f"Ditto webhook field {key} must be a string")
     return value
+
+
+def _duration_ms(started_at: float) -> float:
+    return round((time.perf_counter() - started_at) * 1000, 2)

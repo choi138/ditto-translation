@@ -74,6 +74,7 @@ def get_service() -> DittoTranslationService:
     translator = GeminiTranslator(
         api_key=settings.gemini_api_key,
         model=settings.translation_model,
+        timeout_seconds=settings.translation_timeout_seconds,
     )
     ditto_client = DittoApiClient(
         base_url=settings.ditto_api_base_url,

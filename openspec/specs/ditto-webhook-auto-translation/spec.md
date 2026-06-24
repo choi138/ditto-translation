@@ -67,11 +67,15 @@ The system SHALL translate text by calling the Gemini API configured by environm
 
 #### Scenario: Gemini API key is configured
 - **WHEN** translation is requested
-- **THEN** the system uses `GEMINI_API_KEY` and `TRANSLATION_MODEL` for the Gemini translation request
+- **THEN** the system uses `GEMINI_API_KEY` and `TRANSLATION_MODEL` for a Gemini content generation request
 
 #### Scenario: Gemini API key is required
 - **WHEN** the service constructs the translation provider without `GEMINI_API_KEY`
 - **THEN** the system rejects the configuration before processing webhooks
+
+#### Scenario: Gemini request timeout is configured
+- **WHEN** translation is requested
+- **THEN** the system applies `TRANSLATION_TIMEOUT_SECONDS` as the Gemini request timeout
 
 #### Scenario: Target locales are requested as structured output
 - **WHEN** translation is requested for multiple target locales
@@ -144,3 +148,7 @@ The system SHALL retry transient translation and Ditto update failures and SHALL
 #### Scenario: Event processing completes
 - **WHEN** a webhook event is processed, skipped, duplicated, or failed
 - **THEN** the system logs the outcome without logging API keys or full translated text payloads
+
+#### Scenario: Processed event latency is observable
+- **WHEN** a webhook event is successfully translated and written to Ditto
+- **THEN** the system logs translation, Ditto update, and total processing durations without logging API keys or full translated text payloads
