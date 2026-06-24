@@ -144,6 +144,27 @@ def test_ko_base_change_updates_ko_variant_and_translated_targets(
     ]
 
 
+def test_text_item_creation_updates_ko_variant_and_translated_targets(
+    service: DittoTranslationService,
+    fakes: tuple[FakeTranslator, FakeDittoClient],
+    signing_key: str,
+) -> None:
+    translator, ditto = fakes
+    payload = created_payload(text="새 문구")
+
+    result = process(service, payload, signing_key, "req-created")
+
+    assert result.outcome == ProcessOutcome.PROCESSED
+    assert result.source_locale == "ko"
+    assert result.updated_locales == ("ko", "en", "ja")
+    assert translator.calls == [("ko", ("en", "ja"), "새 문구")]
+    assert [(update.locale, update.variant_id, update.text) for update in ditto.updates] == [
+        ("ko", "ko", "새 문구"),
+        ("en", "en", "새 문구 [en]"),
+        ("ja", "ja", "새 문구 [ja]"),
+    ]
+
+
 def test_processed_event_logs_stage_durations(
     service: DittoTranslationService,
     signing_key: str,
@@ -677,6 +698,30 @@ def test_malformed_supported_webhook_is_skipped_without_retry(
     assert ditto.updates == []
 
 
+def test_malformed_text_item_creation_is_skipped_without_retry(
+    service: DittoTranslationService,
+    fakes: tuple[FakeTranslator, FakeDittoClient],
+    signing_key: str,
+) -> None:
+    translator, ditto = fakes
+    payload: dict[str, object] = {
+        "event": "TextItem_Created",
+        "data": {
+            "textItemId": "welcome-title",
+            "projectId": "app",
+        },
+    }
+
+    result = process(service, payload, signing_key, "req-malformed-created")
+    duplicate = process(service, payload, signing_key, "req-malformed-created")
+
+    assert result.outcome == ProcessOutcome.SKIPPED
+    assert result.reason == "malformed payload"
+    assert duplicate.outcome == ProcessOutcome.DUPLICATE
+    assert translator.calls == []
+    assert ditto.updates == []
+
+
 def test_invalid_json_webhook_is_skipped_without_retry(
     service: DittoTranslationService,
     fakes: tuple[FakeTranslator, FakeDittoClient],
@@ -866,7 +911,7 @@ def test_ditto_api_client_includes_project_id_in_update_payload() -> None:
 
     client = DittoApiClient(
         base_url="https://api.example.test/v2",
-        api_token="Bearer test-token",
+        api_token="test-token",
         force_variant_creation=True,
         transport=httpx.MockTransport(handler),
     )
@@ -883,13 +928,38 @@ def test_ditto_api_client_includes_project_id_in_update_payload() -> None:
     request = requests[0]
     assert request.method == "PATCH"
     assert str(request.url) == "https://api.example.test/v2/textItems"
-    assert request.headers["authorization"] == "Bearer test-token"
+    assert request.headers["authorization"] == "test-token"
     assert json.loads(request.content) == {
         "projectId": "app",
         "variantId": "en",
         "forceVariantCreation": True,
         "updates": [{"developerId": "welcome-title", "text": "Hello"}],
     }
+
+
+def test_ditto_api_client_sends_configured_authorization_value_verbatim() -> None:
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(200, json={"ok": True})
+
+    client = DittoApiClient(
+        base_url="https://api.example.test/v2",
+        api_token="token test-token",
+        force_variant_creation=False,
+        transport=httpx.MockTransport(handler),
+    )
+
+    client.update_text_item(
+        project_id="app",
+        developer_id="welcome-title",
+        locale="en",
+        variant_id="en",
+        text="Hello",
+    )
+
+    assert requests[0].headers["authorization"] == "token test-token"
 
 
 def test_ditto_api_client_redacts_error_response_body(
@@ -1024,6 +1094,18 @@ def process(
         timestamp=str(int(time.time() * 1000)),
     )
     return service.process_webhook(raw_body, headers)
+
+
+def created_payload(text: str) -> dict[str, object]:
+    return {
+        "event": "TextItem_Created",
+        "data": {
+            "textItemId": "welcome-title",
+            "projectId": "app",
+            "integrated": True,
+            "text": text,
+        },
+    }
 
 
 def base_payload(text_after: str) -> dict[str, object]:

@@ -17,7 +17,8 @@ Python FastAPI service for translating Ditto text changes through the Gemini API
 
 Copy `.env.example` to `.env` and set:
 
-- `DITTO_API_TOKEN`: value sent as the Ditto `Authorization` header.
+- `DITTO_API_TOKEN`: Ditto API token. The value is sent verbatim as the
+  `Authorization` header, so configure it exactly as Ditto requires.
 - `DITTO_WEBHOOK_SIGNING_KEY`: webhook signing key from Ditto.
 - `ALLOW_UNSIGNED_WEBHOOKS`: keep `false` in production; set `true` only for local unsigned tests.
 - `DITTO_LOCALE_VARIANT_IDS`: JSON mapping from locale code to Ditto variant developer ID.
@@ -28,6 +29,8 @@ Copy `.env.example` to `.env` and set:
 
 For Docker or Compose deployments, pass `GEMINI_API_KEY` as a runtime
 environment variable or deployment secret. Do not bake API keys into the image.
+Environment variables take precedence over `.env`, so unset stale local secrets
+before relying on updated `.env` values.
 
 ## Run
 

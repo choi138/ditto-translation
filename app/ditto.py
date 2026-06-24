@@ -85,7 +85,7 @@ class DittoApiClient:
         )
         response = self._client.patch(
             "textItems",
-            headers={"Authorization": self._api_token},
+            headers={"Authorization": self._api_token.strip()},
             json=payload,
         )
         if 200 <= response.status_code < 300:
