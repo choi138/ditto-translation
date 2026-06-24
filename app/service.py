@@ -98,6 +98,7 @@ class DittoTranslationService:
                 project_id=change.project_id,
                 developer_id=change.developer_id,
                 locale=change.source_locale,
+                variant_id=change.source_variant_id,
                 text=change.source_text,
             ):
                 self._store.finish_event(event_key, status="skipped")
@@ -198,13 +199,28 @@ class DittoTranslationService:
         target_locales: tuple[str, ...],
     ) -> tuple[str, ...]:
         updated_locales: list[str] = []
-        for locale in target_locales:
-            text = translations[locale]
-            variant_id = self._settings.variant_id_for_locale(locale)
+        locale_updates: list[tuple[str, str, str | None]] = []
+
+        if change.source_variant_id is None:
+            source_variant_id = self._settings.variant_id_for_locale(change.source_locale)
+            if source_variant_id is not None:
+                locale_updates.append((change.source_locale, change.source_text, source_variant_id))
+
+        locale_updates.extend(
+            (
+                locale,
+                translations[locale],
+                self._settings.variant_id_for_locale(locale),
+            )
+            for locale in target_locales
+        )
+
+        for locale, text, variant_id in locale_updates:
             self._store.remember_outbound_update(
                 project_id=change.project_id,
                 developer_id=change.developer_id,
                 locale=locale,
+                variant_id=variant_id,
                 text=text,
                 ttl_seconds=self._settings.outbound_update_ttl_seconds,
             )
@@ -230,6 +246,7 @@ class DittoTranslationService:
                     project_id=change.project_id,
                     developer_id=change.developer_id,
                     locale=locale,
+                    variant_id=variant_id,
                     text=text,
                 )
                 raise
@@ -254,6 +271,7 @@ class DittoTranslationService:
                 developer_id=_required_string(data, "textItemId"),
                 source_locale=self._settings.base_locale,
                 source_text=_required_string(data, "textAfter"),
+                source_variant_id=None,
             )
 
         if event == WebhookEvent.VARIANT_TEXT_CHANGED:
@@ -266,6 +284,7 @@ class DittoTranslationService:
                 developer_id=_required_string(data, "textItemId"),
                 source_locale=source_locale,
                 source_text=_required_string(data, "variantTextAfter"),
+                source_variant_id=variant_id,
             )
 
         return None

@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
+import sqlite3
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -96,7 +98,7 @@ def settings(tmp_path: Path, signing_key: str) -> Settings:
         ditto_api_token="token",
         ditto_webhook_signing_key=signing_key,
         sqlite_path=tmp_path / "events.sqlite3",
-        ditto_locale_variant_ids={"ko": None, "en": "en", "ja": "ja"},
+        ditto_locale_variant_ids={"ko": "ko", "en": "en", "ja": "ja"},
         translation_retry_initial_delay_seconds=0,
         ditto_retry_initial_delay_seconds=0,
     )
@@ -121,7 +123,7 @@ def service(
     )
 
 
-def test_ko_base_change_updates_only_en_and_ja(
+def test_ko_base_change_updates_ko_variant_and_translated_targets(
     service: DittoTranslationService,
     fakes: tuple[FakeTranslator, FakeDittoClient],
     signing_key: str,
@@ -133,11 +135,13 @@ def test_ko_base_change_updates_only_en_and_ja(
 
     assert result.outcome == ProcessOutcome.PROCESSED
     assert result.source_locale == "ko"
-    assert result.updated_locales == ("en", "ja")
+    assert result.updated_locales == ("ko", "en", "ja")
     assert translator.calls == [("ko", ("en", "ja"), "안녕하세요")]
-    assert [update.locale for update in ditto.updates] == ["en", "ja"]
-    assert [update.variant_id for update in ditto.updates] == ["en", "ja"]
-    assert all(update.locale != "ko" for update in ditto.updates)
+    assert [(update.locale, update.variant_id, update.text) for update in ditto.updates] == [
+        ("ko", "ko", "안녕하세요"),
+        ("en", "en", "안녕하세요 [en]"),
+        ("ja", "ja", "안녕하세요 [ja]"),
+    ]
 
 
 def test_en_variant_change_uses_variant_text_after_and_updates_ko_and_ja(
@@ -155,7 +159,27 @@ def test_en_variant_change_uses_variant_text_after_and_updates_ko_and_ja(
     assert result.updated_locales == ("ko", "ja")
     assert translator.calls == [("en", ("ko", "ja"), "Checkout")]
     assert [(update.locale, update.variant_id) for update in ditto.updates] == [
-        ("ko", None),
+        ("ko", "ko"),
+        ("ja", "ja"),
+    ]
+
+
+def test_ko_variant_change_is_supported_when_base_has_variant_id(
+    service: DittoTranslationService,
+    fakes: tuple[FakeTranslator, FakeDittoClient],
+    signing_key: str,
+) -> None:
+    translator, ditto = fakes
+    payload = variant_payload(variant_id="ko", text_after="안녕하세요")
+
+    result = process(service, payload, signing_key, "req-ko-variant")
+
+    assert result.outcome == ProcessOutcome.PROCESSED
+    assert result.source_locale == "ko"
+    assert result.updated_locales == ("en", "ja")
+    assert translator.calls == [("ko", ("en", "ja"), "안녕하세요")]
+    assert [(update.locale, update.variant_id) for update in ditto.updates] == [
+        ("en", "en"),
         ("ja", "ja"),
     ]
 
@@ -173,7 +197,7 @@ def test_duplicate_request_id_is_skipped(
 
     assert first.outcome == ProcessOutcome.PROCESSED
     assert second.outcome == ProcessOutcome.DUPLICATE
-    assert len(ditto.updates) == 2
+    assert len(ditto.updates) == 3
 
 
 def test_in_progress_redelivery_is_not_acknowledged(
@@ -223,7 +247,7 @@ def test_failed_event_can_be_retried(
     result = process(service, payload, signing_key, "retry-request")
 
     assert result.outcome == ProcessOutcome.PROCESSED
-    assert len(ditto.updates) == 2
+    assert len(ditto.updates) == 3
 
 
 def test_failed_event_retry_claim_is_single_owner(settings: Settings) -> None:
@@ -256,6 +280,84 @@ def test_failed_event_retry_claim_is_single_owner(settings: Settings) -> None:
     )
 
 
+def test_outbound_store_migrates_legacy_marker_schema(tmp_path: Path) -> None:
+    sqlite_path = tmp_path / "legacy-outbound.sqlite3"
+    connection = sqlite3.connect(sqlite_path)
+    connection.execute(
+        """
+        CREATE TABLE outbound_updates (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            project_id TEXT NOT NULL,
+            developer_id TEXT NOT NULL,
+            locale TEXT NOT NULL,
+            text_hash TEXT NOT NULL,
+            expires_at REAL NOT NULL,
+            created_at REAL NOT NULL,
+            UNIQUE(project_id, developer_id, locale, text_hash)
+        )
+        """
+    )
+    legacy_text = 'legacy "source"\ntext'
+    now = time.time()
+    connection.execute(
+        """
+        INSERT INTO outbound_updates
+            (project_id, developer_id, locale, text_hash, expires_at, created_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "project",
+            "checkout.title",
+            "en",
+            hashlib.sha256(legacy_text.encode("utf-8")).hexdigest(),
+            now + 60,
+            now,
+        ),
+    )
+    connection.commit()
+    connection.close()
+
+    store = TranslationStore(sqlite_path)
+    assert store.consume_outbound_update(
+        project_id="project",
+        developer_id="checkout.title",
+        locale="en",
+        variant_id="en",
+        text=legacy_text,
+    )
+    store.remember_outbound_update(
+        project_id="project",
+        developer_id="checkout.title",
+        locale="ko",
+        variant_id=None,
+        text="같은 문장",
+        ttl_seconds=60,
+    )
+    store.remember_outbound_update(
+        project_id="project",
+        developer_id="checkout.title",
+        locale="ko",
+        variant_id="ko",
+        text="같은 문장",
+        ttl_seconds=60,
+    )
+
+    assert store.consume_outbound_update(
+        project_id="project",
+        developer_id="checkout.title",
+        locale="ko",
+        variant_id=None,
+        text="같은 문장",
+    )
+    assert store.consume_outbound_update(
+        project_id="project",
+        developer_id="checkout.title",
+        locale="ko",
+        variant_id="ko",
+        text="같은 문장",
+    )
+
+
 def test_self_generated_outbound_webhook_is_skipped(
     service: DittoTranslationService,
     fakes: tuple[FakeTranslator, FakeDittoClient],
@@ -272,7 +374,7 @@ def test_self_generated_outbound_webhook_is_skipped(
     assert echoed.outcome == ProcessOutcome.SKIPPED
     assert echoed.reason == "self-generated update"
     assert len(translator.calls) == 1
-    assert len(ditto.updates) == 2
+    assert len(ditto.updates) == 3
 
 
 def test_outbound_marker_exists_before_ditto_update(
@@ -301,6 +403,7 @@ def test_outbound_marker_exists_before_ditto_update(
                     project_id=project_id,
                     developer_id=developer_id,
                     locale=locale,
+                    variant_id=variant_id,
                     text=text,
                 )
             )
@@ -316,7 +419,7 @@ def test_outbound_marker_exists_before_ditto_update(
     result = process(service, base_payload(text_after="즉시 에코"), signing_key, "req-echo-race")
 
     assert result.outcome == ProcessOutcome.PROCESSED
-    assert ditto.marker_seen == [True, True]
+    assert ditto.marker_seen == [True, True, True]
 
 
 def test_repeated_self_generated_outbound_webhooks_are_skipped_until_ttl(
@@ -337,7 +440,7 @@ def test_repeated_self_generated_outbound_webhooks_are_skipped_until_ttl(
     assert first_echo.outcome == ProcessOutcome.SKIPPED
     assert second_echo.outcome == ProcessOutcome.SKIPPED
     assert len(translator.calls) == 1
-    assert len(ditto.updates) == 2
+    assert len(ditto.updates) == 3
 
 
 def test_translation_failures_are_retried(
@@ -354,7 +457,7 @@ def test_translation_failures_are_retried(
 
     assert result.outcome == ProcessOutcome.PROCESSED
     assert len(translator.calls) == 3
-    assert len(ditto.updates) == 2
+    assert len(ditto.updates) == 3
 
 
 def test_ditto_update_failures_are_retried(
@@ -370,7 +473,7 @@ def test_ditto_update_failures_are_retried(
     )
 
     assert result.outcome == ProcessOutcome.PROCESSED
-    assert len(ditto.updates) == 2
+    assert len(ditto.updates) == 3
 
 
 def test_failed_ditto_update_does_not_create_self_generated_marker(
@@ -396,6 +499,74 @@ def test_failed_ditto_update_does_not_create_self_generated_marker(
 
     assert result.outcome == ProcessOutcome.PROCESSED
     assert len(translator.calls) == 2
+
+
+def test_source_variant_marker_is_preserved_when_later_target_update_fails(
+    settings: Settings,
+    fakes: tuple[FakeTranslator, FakeDittoClient],
+    signing_key: str,
+) -> None:
+    translator, _ = fakes
+    store = TranslationStore(settings.sqlite_path)
+
+    class FailingLaterTargetDittoClient(DittoUpdateClient):
+        def __init__(self) -> None:
+            self.fail_locale: str | None = "ja"
+            self.updates: list[DittoUpdate] = []
+
+        def update_text_item(
+            self,
+            *,
+            project_id: str,
+            developer_id: str,
+            locale: str,
+            variant_id: str | None,
+            text: str,
+        ) -> None:
+            if locale == self.fail_locale:
+                raise RuntimeError("temporary Ditto failure")
+            self.updates.append(
+                DittoUpdate(
+                    project_id=project_id,
+                    developer_id=developer_id,
+                    locale=locale,
+                    variant_id=variant_id,
+                    text=text,
+                )
+            )
+
+    ditto = FailingLaterTargetDittoClient()
+    service = DittoTranslationService(
+        settings=settings,
+        store=store,
+        translator=translator,
+        ditto_client=ditto,
+    )
+    payload = base_payload(text_after="부분 실패")
+
+    with pytest.raises(RuntimeError):
+        process(service, payload, signing_key, "req-source-marker-retry")
+
+    echoed_source_variant = process(
+        service,
+        variant_payload(variant_id="ko", text_after="부분 실패"),
+        signing_key,
+        "req-source-marker-echo",
+    )
+
+    assert echoed_source_variant.outcome == ProcessOutcome.SKIPPED
+    assert echoed_source_variant.reason == "self-generated update"
+    assert translator.calls == [("ko", ("en", "ja"), "부분 실패")]
+
+    ditto.fail_locale = None
+    result = process(service, payload, signing_key, "req-source-marker-retry")
+
+    assert result.outcome == ProcessOutcome.PROCESSED
+    assert translator.calls == [
+        ("ko", ("en", "ja"), "부분 실패"),
+        ("ko", ("en", "ja"), "부분 실패"),
+    ]
+    assert [update.locale for update in ditto.updates] == ["ko", "en", "ko", "en", "ja"]
 
 
 def test_permanent_ditto_update_failure_is_not_retried(
@@ -633,11 +804,27 @@ def test_non_base_locales_must_have_variant_ids(tmp_path: Path) -> None:
         )
 
 
+def test_base_variant_id_must_not_be_blank(tmp_path: Path) -> None:
+    with pytest.raises(ValidationError, match="Variant IDs must not be blank"):
+        Settings(
+            ditto_locale_variant_ids={"ko": "", "en": "en", "ja": "ja"},
+            sqlite_path=tmp_path / "blank-base-variant.sqlite3",
+        )
+
+
 def test_variant_ids_must_be_unique(tmp_path: Path) -> None:
     with pytest.raises(ValidationError, match="Variant IDs must be unique"):
         Settings(
             ditto_locale_variant_ids={"ko": None, "en": "shared", "ja": "shared"},
             sqlite_path=tmp_path / "duplicate-variants.sqlite3",
+        )
+
+
+def test_base_variant_id_must_be_unique(tmp_path: Path) -> None:
+    with pytest.raises(ValidationError, match="Variant IDs must be unique"):
+        Settings(
+            ditto_locale_variant_ids={"ko": "en", "en": "en", "ja": "ja"},
+            sqlite_path=tmp_path / "duplicate-base-variant.sqlite3",
         )
 
 
@@ -665,6 +852,7 @@ def test_ditto_api_client_includes_project_id_in_update_payload() -> None:
 
     assert len(requests) == 1
     request = requests[0]
+    assert request.method == "PATCH"
     assert str(request.url) == "https://api.example.test/v2/textItems"
     assert request.headers["authorization"] == "Bearer test-token"
     assert json.loads(request.content) == {
@@ -675,9 +863,17 @@ def test_ditto_api_client_includes_project_id_in_update_payload() -> None:
     }
 
 
-def test_ditto_api_client_redacts_error_response_body() -> None:
+def test_ditto_api_client_redacts_error_response_body(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    sensitive_text = 'translated "secret"\nline'
+    escaped_sensitive_text = json.dumps(sensitive_text)[1:-1]
+
     def handler(_: httpx.Request) -> httpx.Response:
-        return httpx.Response(400, text='{"text":"translated secret"}')
+        return httpx.Response(
+            400,
+            text=f'{{"text":"{escaped_sensitive_text}","token":"Bearer test-token"}}',
+        )
 
     client = DittoApiClient(
         base_url="https://api.example.test/v2",
@@ -686,19 +882,59 @@ def test_ditto_api_client_redacts_error_response_body() -> None:
         transport=httpx.MockTransport(handler),
     )
 
-    with pytest.raises(PermanentDittoApiError) as exc_info:
+    with (
+        caplog.at_level(logging.ERROR, logger="app.ditto"),
+        pytest.raises(PermanentDittoApiError) as exc_info,
+    ):
         client.update_text_item(
             project_id="app",
             developer_id="welcome-title",
             locale="en",
             variant_id="en",
-            text="translated secret",
+            text=sensitive_text,
         )
 
     message = str(exc_info.value)
     assert "status_code=400" in message
-    assert "translated secret" not in message
+    assert sensitive_text not in message
     assert '"text"' not in message
+    assert sensitive_text not in caplog.text
+    assert escaped_sensitive_text not in caplog.text
+    assert "Bearer test-token" not in caplog.text
+    assert "[redacted]" in caplog.text
+
+
+def test_ditto_api_client_redacts_overlapping_sensitive_values_by_length(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    def handler(_: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            400,
+            text='{"text":"Bearer","token":"Bearer test-token"}',
+        )
+
+    client = DittoApiClient(
+        base_url="https://api.example.test/v2",
+        api_token="Bearer test-token",
+        force_variant_creation=False,
+        transport=httpx.MockTransport(handler),
+    )
+
+    with (
+        caplog.at_level(logging.ERROR, logger="app.ditto"),
+        pytest.raises(PermanentDittoApiError),
+    ):
+        client.update_text_item(
+            project_id="app",
+            developer_id="welcome-title",
+            locale="en",
+            variant_id="en",
+            text="Bearer",
+        )
+
+    assert "Bearer test-token" not in caplog.text
+    assert "test-token" not in caplog.text
+    assert "[redacted] test-token" not in caplog.text
 
 
 def test_ditto_api_client_treats_redirects_as_failures() -> None:

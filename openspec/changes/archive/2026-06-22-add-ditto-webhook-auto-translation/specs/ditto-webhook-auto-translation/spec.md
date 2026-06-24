@@ -20,11 +20,12 @@ The system SHALL expose an HTTP endpoint for Ditto text change webhook events an
 - **THEN** the system marks the event as skipped without translating or updating Ditto
 
 ### Requirement: Source locale preservation
-The system SHALL use the changed locale as the source locale and MUST NOT update that same locale while processing the webhook event.
+The system SHALL use the changed locale as the source locale and MUST NOT translate that same locale as a target locale while processing the webhook event. When a base text change has a configured variant ID for the source locale, the system SHALL write the unchanged source text to that source-locale variant as source synchronization.
 
-#### Scenario: Korean source updates only English and Japanese
-- **WHEN** the configured base locale is `ko` and a Korean base text change is processed
-- **THEN** the system updates only `en` and `ja`
+#### Scenario: Korean base source syncs Korean variant and updates English and Japanese
+- **WHEN** the configured base locale is `ko`, `ko` maps to a variant ID, and a Korean base text change is processed
+- **THEN** the system writes the unchanged Korean source text to the configured `ko` variant
+- **AND** the system updates translated target locales `en` and `ja`
 
 #### Scenario: English source updates only Korean and Japanese
 - **WHEN** an English variant text change is processed
@@ -49,8 +50,8 @@ The system SHALL update target locales through the Ditto Text Items API using co
 - **WHEN** locale mapping configuration assigns the same variant developer ID to multiple locales
 - **THEN** the system rejects the configuration before processing webhooks
 
-#### Scenario: Base locale target omits variant ID
-- **WHEN** the target locale is the configured base locale
+#### Scenario: Locale without variant ID updates base text
+- **WHEN** the target locale maps to `null`
 - **THEN** the system sends a Ditto text item update without `variantId`
 
 #### Scenario: Variant locale target includes variant ID
@@ -108,6 +109,10 @@ The system SHALL prevent webhook cascades caused by its own Ditto target-locale 
 #### Scenario: Failed service update is not marked as self-generated
 - **WHEN** the system fails to write a target locale after exhausting Ditto update retries
 - **THEN** the system does not create a self-generated update marker for that failed write
+
+#### Scenario: Source-variant echo remains skipped after later target failure
+- **WHEN** the system successfully writes a configured source-locale variant and a later target-locale update fails
+- **THEN** an echoed webhook for the successful source-locale variant is skipped as self-generated while the original base webhook remains retryable
 
 #### Scenario: Real source edit is received
 - **WHEN** Ditto sends a webhook whose locale or text does not match a recent service-generated update

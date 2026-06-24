@@ -28,6 +28,7 @@ class SourceChange:
     developer_id: str
     source_locale: str
     source_text: str
+    source_variant_id: str | None
 
 
 @dataclass(frozen=True)
