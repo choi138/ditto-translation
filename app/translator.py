@@ -1,9 +1,14 @@
 from __future__ import annotations
 
 import json
-from typing import Protocol
+import logging
+import time
+from typing import Protocol, cast
 
-from openai import OpenAI
+from google import genai
+from google.genai import types
+
+logger = logging.getLogger(__name__)
 
 
 class Translator(Protocol):
@@ -20,16 +25,41 @@ class TranslationError(RuntimeError):
     """Raised when translation output cannot be used safely."""
 
 
-class CodexLbTranslator:
+class GeminiModels(Protocol):
+    def generate_content(self, **body: object) -> object: ...
+
+
+class GeminiClient(Protocol):
+    models: GeminiModels
+
+
+SYSTEM_INSTRUCTION = (
+    "You are a professional product localization engine. "
+    "Translate UI/product copy faithfully. Preserve placeholders, "
+    "variables, ICU tokens, printf tokens, HTML tags, markdown links, "
+    "line breaks, and leading/trailing whitespace. Return only JSON."
+)
+
+
+class GeminiTranslator:
     def __init__(
         self,
         *,
-        base_url: str,
         api_key: str,
         model: str,
+        timeout_seconds: float = 10.0,
+        client: GeminiClient | None = None,
     ) -> None:
+        if client is None and api_key.strip() == "":
+            raise ValueError("GEMINI_API_KEY must be configured")
+        if model.strip() == "":
+            raise ValueError("TRANSLATION_MODEL must be configured")
+        if timeout_seconds <= 0:
+            raise ValueError("TRANSLATION_TIMEOUT_SECONDS must be greater than 0")
+
         self._model = model
-        self._client = OpenAI(base_url=base_url, api_key=api_key)
+        self._timeout_seconds = timeout_seconds
+        self._client = client or cast(GeminiClient, genai.Client(api_key=api_key))
 
     def translate(
         self,
@@ -43,35 +73,62 @@ class CodexLbTranslator:
         if text == "":
             return {locale: "" for locale in target_locales}
 
-        response = self._client.chat.completions.create(
-            model=self._model,
-            messages=[
-                {
-                    "role": "system",
-                    "content": (
-                        "You are a professional product localization engine. "
-                        "Translate UI/product copy faithfully. Preserve placeholders, "
-                        "variables, ICU tokens, printf tokens, HTML tags, markdown links, "
-                        "line breaks, and leading/trailing whitespace. Return only JSON."
-                    ),
-                },
-                {
-                    "role": "user",
-                    "content": json.dumps(
-                        {
-                            "source_locale": source_locale,
-                            "target_locales": list(target_locales),
-                            "text": text,
-                            "response_shape": {
-                                locale: f"translation in {locale}" for locale in target_locales
-                            },
-                        },
-                        ensure_ascii=False,
-                    ),
-                },
-            ],
+        request_body = json.dumps(
+            {
+                "source_locale": source_locale,
+                "target_locales": list(target_locales),
+                "text": text,
+                "response_shape": {locale: f"translation in {locale}" for locale in target_locales},
+            },
+            ensure_ascii=False,
         )
-        content = response.choices[0].message.content
+        response_schema: dict[str, object] = {
+            "type": "object",
+            "properties": {locale: {"type": "string"} for locale in target_locales},
+            "required": list(target_locales),
+        }
+
+        started_at = time.perf_counter()
+        try:
+            response = self._client.models.generate_content(
+                model=self._model,
+                contents=request_body,
+                config=types.GenerateContentConfig(
+                    system_instruction=SYSTEM_INSTRUCTION,
+                    response_mime_type="application/json",
+                    response_schema=response_schema,
+                    thinking_config=types.ThinkingConfig(thinking_budget=0),
+                    http_options=types.HttpOptions(
+                        timeout=int(self._timeout_seconds * 1000),
+                    ),
+                ),
+            )
+        except Exception as exc:
+            logger.warning(
+                "Gemini translation request failed",
+                extra={
+                    "model": self._model,
+                    "source_locale": source_locale,
+                    "target_locale_count": len(target_locales),
+                    "source_text_length": len(text),
+                    "duration_ms": _duration_ms(started_at),
+                    "error_type": exc.__class__.__name__,
+                },
+            )
+            raise TranslationError("Translation provider request failed") from exc
+
+        logger.info(
+            "Gemini translation request completed",
+            extra={
+                "model": self._model,
+                "source_locale": source_locale,
+                "target_locale_count": len(target_locales),
+                "source_text_length": len(text),
+                "duration_ms": _duration_ms(started_at),
+            },
+        )
+
+        content = getattr(response, "text", None)
         if not isinstance(content, str):
             raise TranslationError("Translation response did not contain text content")
         return parse_translation_json(content, target_locales)
@@ -104,3 +161,7 @@ def _load_json_object(content: str) -> dict[str, object]:
     if not isinstance(parsed, dict):
         raise TranslationError("Translation response JSON must be an object")
     return parsed
+
+
+def _duration_ms(started_at: float) -> float:
+    return round((time.perf_counter() - started_at) * 1000, 2)

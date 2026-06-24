@@ -1,7 +1,6 @@
 # Ditto Translation Webhook
 
-Python FastAPI service for translating Ditto text changes through a local codex-lb
-OpenAI-compatible endpoint.
+Python FastAPI service for translating Ditto text changes through the Gemini API.
 
 ## Behavior
 
@@ -23,9 +22,11 @@ Copy `.env.example` to `.env` and set:
 - `ALLOW_UNSIGNED_WEBHOOKS`: keep `false` in production; set `true` only for local unsigned tests.
 - `DITTO_LOCALE_VARIANT_IDS`: JSON mapping from locale code to Ditto variant developer ID.
   Use `null` only for locales that should update base text instead of a variant.
-- `CODEX_LB_BASE_URL`: default is `http://127.0.0.1:2455/v1`.
-- `CODEX_LB_API_KEY`: API key generated from the `~/Desktop/codex-lb` dashboard.
-- `TRANSLATION_MODEL`: default is `gpt-5.3-codex`.
+- `GEMINI_API_KEY`: Gemini API key used by the translation provider.
+- `TRANSLATION_MODEL`: default is `gemini-3.5-flash`.
+
+For Docker or Compose deployments, pass `GEMINI_API_KEY` as a runtime
+environment variable or deployment secret. Do not bake API keys into the image.
 
 ## Run
 

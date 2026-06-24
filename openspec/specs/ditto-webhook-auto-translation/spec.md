@@ -1,6 +1,6 @@
 ## Purpose
 
-Provide a Ditto webhook service that translates changed text through the configured codex-lb OpenAI-compatible provider and updates the remaining configured Ditto locales without overwriting the source locale.
+Provide a Ditto webhook service that translates changed text through the configured Gemini provider and updates the remaining configured Ditto locales without overwriting the source locale.
 
 ## Requirements
 
@@ -62,12 +62,16 @@ The system SHALL update target locales through the Ditto Text Items API using co
 - **WHEN** the target locale is a configured variant locale
 - **THEN** the system sends a Ditto text item update with that locale's configured variant developer ID
 
-### Requirement: codex-lb translation provider
-The system SHALL translate text by calling the codex-lb OpenAI-compatible endpoint configured by environment variables.
+### Requirement: Gemini translation provider
+The system SHALL translate text by calling the Gemini API configured by environment variables.
 
-#### Scenario: codex-lb API key is configured
+#### Scenario: Gemini API key is configured
 - **WHEN** translation is requested
-- **THEN** the system uses `CODEX_LB_BASE_URL`, `CODEX_LB_API_KEY`, and `TRANSLATION_MODEL` for the OpenAI-compatible chat completion call
+- **THEN** the system uses `GEMINI_API_KEY` and `TRANSLATION_MODEL` for the Gemini translation request
+
+#### Scenario: Gemini API key is required
+- **WHEN** the service constructs the translation provider without `GEMINI_API_KEY`
+- **THEN** the system rejects the configuration before processing webhooks
 
 #### Scenario: Target locales are requested as structured output
 - **WHEN** translation is requested for multiple target locales
