@@ -144,6 +144,27 @@ def test_ko_base_change_updates_ko_variant_and_translated_targets(
     ]
 
 
+def test_processed_event_logs_stage_durations(
+    service: DittoTranslationService,
+    signing_key: str,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    with caplog.at_level(logging.INFO, logger="app.service"):
+        result = process(service, base_payload(text_after="시간 측정"), signing_key, "req-timing")
+
+    assert result.outcome == ProcessOutcome.PROCESSED
+    records = [
+        record
+        for record in caplog.records
+        if record.getMessage() == "Processed Ditto translation webhook"
+    ]
+    assert len(records) == 1
+    record_fields = records[0].__dict__
+    assert isinstance(record_fields["translation_duration_ms"], float)
+    assert isinstance(record_fields["ditto_update_duration_ms"], float)
+    assert isinstance(record_fields["duration_ms"], float)
+
+
 def test_en_variant_change_uses_variant_text_after_and_updates_ko_and_ja(
     service: DittoTranslationService,
     fakes: tuple[FakeTranslator, FakeDittoClient],
@@ -825,6 +846,14 @@ def test_base_variant_id_must_be_unique(tmp_path: Path) -> None:
         Settings(
             ditto_locale_variant_ids={"ko": "en", "en": "en", "ja": "ja"},
             sqlite_path=tmp_path / "duplicate-base-variant.sqlite3",
+        )
+
+
+def test_translation_timeout_must_be_positive(tmp_path: Path) -> None:
+    with pytest.raises(ValidationError):
+        Settings(
+            translation_timeout_seconds=0,
+            sqlite_path=tmp_path / "invalid-timeout.sqlite3",
         )
 
 

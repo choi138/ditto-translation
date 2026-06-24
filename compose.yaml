@@ -1,0 +1,17 @@
+services:
+  ditto-translation:
+    image: ${DITTO_TRANSLATION_IMAGE:-ghcr.io/choi138/ditto-translation:latest}
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file:
+      - .env
+    ports:
+      - "${DITTO_TRANSLATION_PORT:-8080}:8080"
+    volumes:
+      - ditto-translation-data:/app/var
+    restart: unless-stopped
+
+volumes:
+  ditto-translation-data:
+    name: ditto-translation-data

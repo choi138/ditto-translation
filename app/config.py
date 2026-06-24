@@ -30,7 +30,8 @@ class Settings(BaseSettings):
     base_locale: str = "ko"
 
     gemini_api_key: str = ""
-    translation_model: str = "gemini-3.5-flash"
+    translation_model: str = "gemini-3.1-flash-lite"
+    translation_timeout_seconds: float = Field(default=10.0, gt=0)
 
     sqlite_path: Path = Path("var/app.sqlite3")
     webhook_timestamp_tolerance_seconds: int = 360
