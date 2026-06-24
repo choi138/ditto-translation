@@ -88,10 +88,17 @@ When the user asks to merge a PR, use squash merge by default. Do not use a
 merge commit or rebase merge unless the user explicitly requests that merge
 method.
 
-For squash merges, explicitly set the squash commit content:
+For squash merges, preserve GitHub's default squash commit title generation so
+the merged commit includes the pull request number link, for example
+`feat(scope): summary (#123)`:
 
-- Use the final PR title as the squash commit title. It must follow
-  Conventional Commits.
+- Do not override the squash commit title with the raw PR title. In GitHub UI,
+  keep the generated title. With `gh` or the GitHub API, omit title/subject
+  options such as `--subject` or `commit_title` unless the user explicitly asks
+  for a custom squash title.
+- If a custom squash title is explicitly required, include the PR number suffix
+  in GitHub's default format: `<final PR title> (#<PR number>)`. The PR title
+  portion must follow Conventional Commits.
 - Write a non-empty squash commit body that summarizes the merged change and
   records the verification performed. Reuse the PR body when it is accurate;
   otherwise write a concise fresh body before merging.
