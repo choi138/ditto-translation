@@ -29,9 +29,8 @@ class Settings(BaseSettings):
 
     base_locale: str = "ko"
 
-    codex_lb_base_url: str = "http://127.0.0.1:2455/v1"
-    codex_lb_api_key: str = "codex-lb-local-dev-key"
-    translation_model: str = "gpt-5.3-codex"
+    gemini_api_key: str = ""
+    translation_model: str = "gemini-3.5-flash"
 
     sqlite_path: Path = Path("var/app.sqlite3")
     webhook_timestamp_tolerance_seconds: int = 360

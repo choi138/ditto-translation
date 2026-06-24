@@ -12,7 +12,7 @@ from app.models import EventInProgressError
 from app.security import SignatureError
 from app.service import DittoTranslationService
 from app.store import TranslationStore
-from app.translator import CodexLbTranslator
+from app.translator import GeminiTranslator
 
 
 def create_app() -> FastAPI:
@@ -71,9 +71,8 @@ def configure_logging(settings: Settings) -> None:
 def get_service() -> DittoTranslationService:
     settings = get_settings()
     store = TranslationStore(settings.sqlite_path)
-    translator = CodexLbTranslator(
-        base_url=settings.codex_lb_base_url,
-        api_key=settings.codex_lb_api_key,
+    translator = GeminiTranslator(
+        api_key=settings.gemini_api_key,
         model=settings.translation_model,
     )
     ditto_client = DittoApiClient(

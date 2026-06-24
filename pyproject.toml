@@ -1,14 +1,14 @@
 [project]
 name = "ditto-translation"
 version = "0.1.0"
-description = "Ditto webhook service that auto-translates changed locales through codex-lb."
+description = "Ditto webhook service that auto-translates changed locales through Gemini."
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "anyio>=4.0",
     "fastapi>=0.115",
+    "google-genai>=2.10.0",
     "httpx>=0.28",
-    "openai>=1.0",
     "pydantic>=2.8",
     "pydantic-settings>=2.4",
     "uvicorn[standard]>=0.34",
