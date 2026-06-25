@@ -106,6 +106,27 @@ DITTO_TRANSLATION_IMAGE=ghcr.io/choi138/ditto-translation:0.1.0 docker compose p
 DITTO_TRANSLATION_IMAGE=ghcr.io/choi138/ditto-translation:0.1.0 docker compose up -d --no-build
 ```
 
+## Vercel
+
+Production deploys can be run manually with:
+
+```bash
+vercel deploy --prod
+```
+
+The `Vercel Release` GitHub Actions workflow deploys production when a GitHub
+release is published or a `v*` tag is pushed. Configure these repository secrets
+before cutting a release:
+
+- `VERCEL_TOKEN`
+- `VERCEL_ORG_ID`
+- `VERCEL_PROJECT_ID`
+
+Application runtime secrets such as `DITTO_API_TOKEN`,
+`DITTO_WEBHOOK_SIGNING_KEY`, and `GEMINI_API_KEY` should stay in the Vercel
+project's Production environment variables. Vercel applies environment variable
+changes to the next production deployment.
+
 ## Verify
 
 ```bash
