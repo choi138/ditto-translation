@@ -3,9 +3,6 @@ name: Vercel Release
 on:
   release:
     types: [published]
-  push:
-    tags:
-      - "v*"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -15,8 +12,39 @@ permissions:
   contents: read
 
 jobs:
+  release-gate:
+    name: Check production release eligibility
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      deploy: ${{ steps.gate.outputs.deploy }}
+
+    steps:
+      - name: Check release tag
+        id: gate
+        shell: bash
+        env:
+          PRERELEASE: ${{ github.event.release.prerelease }}
+          TAG_NAME: ${{ github.event.release.tag_name }}
+        run: |
+          if [ "$PRERELEASE" = "true" ]; then
+            echo "Skipping production deploy for prerelease $TAG_NAME"
+            echo "deploy=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [[ ! "$TAG_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Skipping production deploy for non-production tag $TAG_NAME"
+            echo "deploy=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "deploy=true" >> "$GITHUB_OUTPUT"
+
   vercel-production:
     name: Deploy to Vercel production
+    needs: release-gate
+    if: ${{ needs.release-gate.outputs.deploy == 'true' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     environment:

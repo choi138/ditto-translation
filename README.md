@@ -114,9 +114,10 @@ Production deploys can be run manually with:
 vercel deploy --prod
 ```
 
-The `Vercel Release` GitHub Actions workflow deploys production when a GitHub
-release is published or a `v*` tag is pushed. Configure these repository secrets
-before cutting a release:
+The `Vercel Release` GitHub Actions workflow deploys production only when a
+non-prerelease GitHub release is published with a production SemVer tag such as
+`v1.2.3`. Prereleases and RC tags such as `v1.2.3-rc.1` are skipped. Configure
+these repository secrets before cutting a release:
 
 - `VERCEL_TOKEN`
 - `VERCEL_ORG_ID`
