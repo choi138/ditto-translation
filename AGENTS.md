@@ -1,5 +1,16 @@
 # AGENTS
 
+## OpenSpec tooling
+
+Use OpenSpec CLI 2.1.0 with globally installed `openspec-*` skills. On each new
+machine, install the CLI from https://openspec.dev/docs/installation, then run
+`openspec update` interactively from this repository to set up your AI tools.
+Common workflow skills live outside Git; repository-specific skills stay here.
+Keep `openspec/config.yaml`, `openspec/specs/`, and `openspec/changes/` (including
+`archive/`) in Git so proposals, design decisions, tasks, and history remain shared.
+Global skills do not archive changes automatically; follow this repository's
+verification and archive rules.
+
 ## Environment
 
 - Use `uv` for Python commands and dependency management.
