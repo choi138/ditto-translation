@@ -3,8 +3,33 @@
 ## OpenSpec tooling
 
 Use OpenSpec CLI 2.1.0 with globally installed `openspec-*` skills. On each new
-machine, install the CLI from https://openspec.dev/docs/installation, then run
-`openspec update` interactively from this repository to set up your AI tools.
+machine, use the standalone installer (no Node.js required; the npm package needs
+Node.js >=22.20.0). See https://openspec.dev/docs/installation.
+
+```sh
+curl -fsSL https://openspec.dev/cli/install.sh | OPENSPEC_VERSION=v2.1.0 sh
+export PATH="$HOME/.local/bin:$PATH"
+openspec --version
+```
+
+Confirm the version is `2.1.0`. From the repository root, configure all twelve
+workflows before installing skills; the default `core` profile includes only six.
+These settings are machine-wide. On an already configured machine, inspect
+`openspec config list` first; the following commands replace the workflow selection.
+
+```sh
+openspec config set workflows '["propose","explore","new","continue","apply","update","ff","sync","archive","bulk-archive","verify","onboard"]'
+openspec config set profile custom
+openspec init --scope global --tools claude,codex --profile custom --no-animation
+openspec update
+```
+
+Adjust the comma-separated tool IDs to the agents you use (`openspec init --help`
+lists them). To add a missing tool later, rerun `init --scope global --tools`
+with that tool and `--profile custom`; `update` refreshes installed tools but does
+not add missing ones. For Hermes named profiles, install into that profile's
+skills directory through its profile-aware skill installer rather than assuming
+the default Hermes skills directory is shared with every profile.
 Common workflow skills live outside Git; repository-specific skills stay here.
 Keep `openspec/config.yaml`, `openspec/specs/`, and `openspec/changes/` (including
 `archive/`) in Git so proposals, design decisions, tasks, and history remain shared.
